@@ -1,0 +1,575 @@
+#include <math.h>
+//ir sensor pins 
+#define ir1 A0
+#define ir2 A1
+#define ir3 A2
+#define ir4 A3
+#define ir5 A4
+#define ir6 A5
+#define ir7 11
+#define ir8 12
+bool flag=0,flag_back=1;
+int ir[8];
+int pin_status[8];
+int k;
+int j=0;
+int l_pwm=6,l_dir_1=8,l_dir_2=10;
+int r_pwm=3,r_dir_1=5,r_dir_2=4;
+int left_rpm,right_rpm;
+
+double error,p_error,t_error,integral=0,differential=0,kp=6,ki=0,kd=16,required;
+int max_n=-70,max_p=70;
+
+void setup() 
+{
+  Serial.begin(9600);
+  
+  //input pin set
+  pinMode(ir1,INPUT);
+  pinMode(ir2,INPUT);
+  pinMode(ir3,INPUT);
+  pinMode(ir4,INPUT);
+  pinMode(ir5,INPUT);
+  pinMode(ir6,INPUT);
+  pinMode(ir7,INPUT);
+  pinMode(ir8,INPUT);
+
+  //output pin set
+  pinMode(l_pwm,OUTPUT);
+  pinMode(l_dir_1,OUTPUT);
+  pinMode(l_dir_2,OUTPUT);
+  pinMode(r_pwm,OUTPUT);
+  pinMode(r_dir_1,OUTPUT);
+  pinMode(r_dir_2,OUTPUT);
+
+  //arduino pins low
+  digitalWrite(l_dir_1,LOW);
+  digitalWrite(l_dir_2,LOW);
+  digitalWrite(r_dir_1,LOW);
+  digitalWrite(r_dir_2,LOW);
+  digitalWrite(l_pwm,LOW);
+  digitalWrite(r_pwm,LOW);  
+  forward();
+
+}
+void reverse()
+{
+    digitalWrite(l_dir_1,LOW);
+    digitalWrite(l_dir_2,HIGH);
+    digitalWrite(r_dir_1,LOW);
+    digitalWrite(r_dir_2,HIGH);
+}
+
+
+
+int pid_calc (void)
+{
+    k=0;
+    error=0;
+    j=0;
+    int i;
+    t_error=0;
+    required=70;
+    
+    //setting pin status
+    pin_status[0]=0;
+    pin_status[1]=20;
+    pin_status[2]=40;
+    pin_status[3]=60;
+    pin_status[4]=80;
+    pin_status[5]=100;
+    pin_status[6]=120;
+    pin_status[7]=140;
+
+    //pin configuration
+    ir[0]=digitalRead(ir1);
+    ir[1]=digitalRead(ir2);
+    ir[2]=digitalRead(ir3);
+    ir[3]=digitalRead(ir4);
+    ir[4]=digitalRead(ir5);
+    ir[5]=digitalRead(ir6);
+    ir[6]=digitalRead(ir7);
+    ir[7]=digitalRead(ir8);
+
+//    for(i=0;i<8;i++)
+//    {
+//      Serial.print(ir[i]);
+//    }
+  
+    //checking pins
+    for(i=0;i<8;i++)
+    {
+      j+=ir[i];
+    }
+  
+    //calculating error
+    for(i=0;i<8;i++)
+    {
+      error+=(pin_status[i]*ir[i]);
+    }
+   // Serial.println();
+   // Serial.println(error);
+  
+    
+    if(j==0)
+    {
+      if(flag_back==1)
+      {
+        forward();
+        left_rpm = 200;
+        right_rpm = 200;
+        analogWrite(l_pwm,left_rpm);
+      
+        //for right motor
+        analogWrite(r_pwm,right_rpm);
+        delay(50);
+        flag_back=0;
+      }
+      else
+      {
+        reverse();
+      }
+    }
+    else
+    {
+        flag_back = 1;
+    }
+    error/=j;
+    error=required-error;
+    //Serial.println();
+    //Serial.println(error);
+    
+    integral=p_error+error;
+    differential=(error-p_error);
+    t_error=(kp*error+ki*integral+kd*differential);
+    p_error = error;
+    return t_error;
+    
+}
+
+void forward()
+{
+    digitalWrite(l_dir_1,HIGH);
+    digitalWrite(l_dir_2,LOW);
+    digitalWrite(r_dir_1,HIGH);
+    digitalWrite(r_dir_2,LOW);
+}
+
+void reverse_left()
+{
+    digitalWrite(l_dir_1,LOW);
+    digitalWrite(l_dir_2,HIGH);
+}
+void reverse_right()
+{
+   digitalWrite(r_dir_1,LOW);
+    digitalWrite(r_dir_2,HIGH);
+}
+
+void full_stop()
+{
+  digitalWrite(l_dir_1,LOW);
+    digitalWrite(l_dir_2,LOW);
+    digitalWrite(r_dir_1,LOW);
+    digitalWrite(r_dir_2,LOW);
+}
+
+void forward_left()
+{
+  digitalWrite(l_dir_1,HIGH);
+    digitalWrite(l_dir_2,LOW);
+    
+}
+void forward_right()
+{
+  
+    digitalWrite(r_dir_1,HIGH);
+    digitalWrite(r_dir_2,LOW);
+}
+
+void loop() 
+{ 
+  // put your main code here, to run repeatedly:
+
+
+
+ 
+// if(!flag)
+    //forward();
+
+    
+  
+    int pid,pwm_left,pwm_right;
+    pid=pid_calc();
+    //Serial.println(pid);
+    //Serial.println();
+   
+    if(j!=0)
+    
+    {
+      
+      
+      left_rpm=240+(pid);
+      right_rpm=240-(pid); //max value
+      
+    
+    if(left_rpm <= 0)
+    {
+      left_rpm*=(-1);
+      reverse_left();
+    }
+    else
+    {
+      forward_left();
+    }
+    
+
+    if(right_rpm <= 0)
+    {
+      right_rpm*=(-1);
+      reverse_right();
+    }
+    else
+    {
+      forward_right();
+    }
+
+    if(left_rpm>255)
+    {
+      left_rpm=255;
+    }
+
+    if(right_rpm>255)
+    {
+      right_rpm=255;
+    }
+
+  if(j>=5)
+  {
+    flag=1;
+    left_rpm = 240;
+    right_rpm = 240;
+    if(error > 0)
+    {
+      reverse_right();
+      forward_left();
+    }
+    else 
+    {
+      reverse_left();
+      forward_right();
+    }
+    //for left motor
+    analogWrite(l_pwm,left_rpm);
+    
+    //for right motor
+    analogWrite(r_pwm,right_rpm);
+    delay(100);
+  }
+  else if(j>=1)
+  {
+    flag=0;
+  }
+    }
+    
+    //for left motor
+    analogWrite(l_pwm,left_rpm);
+    
+    //for right motor
+    analogWrite(r_pwm,right_rpm);
+
+    //Serial.println();
+    Serial.print(error);
+    Serial.print(left_rpm);
+    Serial.print("     ");
+    Serial.println(right_rpm);
+    //Serial.println();
+  
+  }#include <math.h>
+//ir sensor pins 
+#define ir1 A0
+#define ir2 A1
+#define ir3 A2
+#define ir4 A3
+#define ir5 A4
+#define ir6 A5
+#define ir7 11
+#define ir8 12
+bool flag=0,flag_back=1;
+int ir[8];
+int pin_status[8];
+int k;
+int j=0;
+int l_pwm=6,l_dir_1=8,l_dir_2=10;
+int r_pwm=3,r_dir_1=5,r_dir_2=4;
+int left_rpm,right_rpm;
+
+double error,p_error,t_error,integral=0,differential=0,kp=6,ki=0,kd=16,required;
+int max_n=-70,max_p=70;
+
+void setup() 
+{
+  Serial.begin(9600);
+  
+  //input pin set
+  pinMode(ir1,INPUT);
+  pinMode(ir2,INPUT);
+  pinMode(ir3,INPUT);
+  pinMode(ir4,INPUT);
+  pinMode(ir5,INPUT);
+  pinMode(ir6,INPUT);
+  pinMode(ir7,INPUT);
+  pinMode(ir8,INPUT);
+
+  //output pin set
+  pinMode(l_pwm,OUTPUT);
+  pinMode(l_dir_1,OUTPUT);
+  pinMode(l_dir_2,OUTPUT);
+  pinMode(r_pwm,OUTPUT);
+  pinMode(r_dir_1,OUTPUT);
+  pinMode(r_dir_2,OUTPUT);
+
+  //arduino pins low
+  digitalWrite(l_dir_1,LOW);
+  digitalWrite(l_dir_2,LOW);
+  digitalWrite(r_dir_1,LOW);
+  digitalWrite(r_dir_2,LOW);
+  digitalWrite(l_pwm,LOW);
+  digitalWrite(r_pwm,LOW);  
+  forward();
+
+}
+void reverse()
+{
+    digitalWrite(l_dir_1,LOW);
+    digitalWrite(l_dir_2,HIGH);
+    digitalWrite(r_dir_1,LOW);
+    digitalWrite(r_dir_2,HIGH);
+}
+
+
+
+int pid_calc (void)
+{
+    k=0;
+    error=0;
+    j=0;
+    int i;
+    t_error=0;
+    required=70;
+    
+    //setting pin status
+    pin_status[0]=0;
+    pin_status[1]=20;
+    pin_status[2]=40;
+    pin_status[3]=60;
+    pin_status[4]=80;
+    pin_status[5]=100;
+    pin_status[6]=120;
+    pin_status[7]=140;
+
+    //pin configuration
+    ir[0]=digitalRead(ir1);
+    ir[1]=digitalRead(ir2);
+    ir[2]=digitalRead(ir3);
+    ir[3]=digitalRead(ir4);
+    ir[4]=digitalRead(ir5);
+    ir[5]=digitalRead(ir6);
+    ir[6]=digitalRead(ir7);
+    ir[7]=digitalRead(ir8);
+
+//    for(i=0;i<8;i++)
+//    {
+//      Serial.print(ir[i]);
+//    }
+  
+    //checking pins
+    for(i=0;i<8;i++)
+    {
+      j+=ir[i];
+    }
+  
+    //calculating error
+    for(i=0;i<8;i++)
+    {
+      error+=(pin_status[i]*ir[i]);
+    }
+   // Serial.println();
+   // Serial.println(error);
+  
+    
+    if(j==0)
+    {
+      if(flag_back==1)
+      {
+        forward();
+        left_rpm = 200;
+        right_rpm = 200;
+        analogWrite(l_pwm,left_rpm);
+      
+        //for right motor
+        analogWrite(r_pwm,right_rpm);
+        delay(50);
+        flag_back=0;
+      }
+      else
+      {
+        reverse();
+      }
+    }
+    else
+    {
+        flag_back = 1;
+    }
+    error/=j;
+    error=required-error;
+    //Serial.println();
+    //Serial.println(error);
+    
+    integral=p_error+error;
+    differential=(error-p_error);
+    t_error=(kp*error+ki*integral+kd*differential);
+    p_error = error;
+    return t_error;
+    
+}
+
+void forward()
+{
+    digitalWrite(l_dir_1,HIGH);
+    digitalWrite(l_dir_2,LOW);
+    digitalWrite(r_dir_1,HIGH);
+    digitalWrite(r_dir_2,LOW);
+}
+
+void reverse_left()
+{
+    digitalWrite(l_dir_1,LOW);
+    digitalWrite(l_dir_2,HIGH);
+}
+void reverse_right()
+{
+   digitalWrite(r_dir_1,LOW);
+    digitalWrite(r_dir_2,HIGH);
+}
+
+void full_stop()
+{
+  digitalWrite(l_dir_1,LOW);
+    digitalWrite(l_dir_2,LOW);
+    digitalWrite(r_dir_1,LOW);
+    digitalWrite(r_dir_2,LOW);
+}
+
+void forward_left()
+{
+  digitalWrite(l_dir_1,HIGH);
+    digitalWrite(l_dir_2,LOW);
+    
+}
+void forward_right()
+{
+  
+    digitalWrite(r_dir_1,HIGH);
+    digitalWrite(r_dir_2,LOW);
+}
+
+void loop() 
+{ 
+  // put your main code here, to run repeatedly:
+
+
+
+ 
+// if(!flag)
+    //forward();
+
+    
+  
+    int pid,pwm_left,pwm_right;
+    pid=pid_calc();
+    //Serial.println(pid);
+    //Serial.println();
+   
+    if(j!=0)
+    
+    {
+      
+      
+      left_rpm=240+(pid);
+      right_rpm=240-(pid); //max value
+      
+    
+    if(left_rpm <= 0)
+    {
+      left_rpm*=(-1);
+      reverse_left();
+    }
+    else
+    {
+      forward_left();
+    }
+    
+
+    if(right_rpm <= 0)
+    {
+      right_rpm*=(-1);
+      reverse_right();
+    }
+    else
+    {
+      forward_right();
+    }
+
+    if(left_rpm>255)
+    {
+      left_rpm=255;
+    }
+
+    if(right_rpm>255)
+    {
+      right_rpm=255;
+    }
+
+  if(j>=5)
+  {
+    flag=1;
+    left_rpm = 240;
+    right_rpm = 240;
+    if(error > 0)
+    {
+      reverse_right();
+      forward_left();
+    }
+    else 
+    {
+      reverse_left();
+      forward_right();
+    }
+    //for left motor
+    analogWrite(l_pwm,left_rpm);
+    
+    //for right motor
+    analogWrite(r_pwm,right_rpm);
+    delay(100);
+  }
+  else if(j>=1)
+  {
+    flag=0;
+  }
+    }
+    
+    //for left motor
+    analogWrite(l_pwm,left_rpm);
+    
+    //for right motor
+    analogWrite(r_pwm,right_rpm);
+
+    //Serial.println();
+    Serial.print(error);
+    Serial.print(left_rpm);
+    Serial.print("     ");
+    Serial.println(right_rpm);
+    //Serial.println();
+  
+  }
